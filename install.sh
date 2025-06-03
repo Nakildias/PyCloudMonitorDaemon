@@ -52,8 +52,8 @@ Restart=on-failure
 User=$CURRENT_USER
 Group=$CURRENT_USER
 WorkingDirectory=$INSTALL_DIR
-StandardOutput=append:$LOG_FILE
-StandardError=append:$LOG_FILE
+#StandardOutput=append:$LOG_FILE
+#StandardError=append:$LOG_FILE
 
 [Install]
 WantedBy=multi-user.target
