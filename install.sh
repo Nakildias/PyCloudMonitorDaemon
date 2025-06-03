@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # --- Configuration ---
 INSTALL_DIR="~/.local/share/PyCloudDaemon"
 VENV_DIR="$INSTALL_DIR/venv"
@@ -7,7 +6,6 @@ MAIN_PY_SOURCE="main.py" # Assumes main.py is in the same directory as the insta
 USR_BIN_SCRIPT="/usr/bin/pycloud-daemon"
 SYSTEMD_SERVICE_FILE="/etc/systemd/system/pycloud-daemon.service"
 LOG_FILE="$INSTALL_DIR/daemon_log.txt" # Ensure this path is consistent with main.py
-
 # --- Functions ---
 log_message() {
     echo "$(date +'%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
