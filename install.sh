@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # --- Configuration ---
-INSTALL_DIR="/home/$USERNAME/.local/share/PyCloudDaemon"
+INSTALL_DIR="/home/$CURRENT_USER/.local/share/PyCloudDaemon"
 VENV_DIR="$INSTALL_DIR/venv"
 MAIN_PY_SOURCE="main.py" # Assumes main.py is in the same directory as the install.sh script
 USR_BIN_SCRIPT="/usr/bin/pycloud-daemon"
