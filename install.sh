@@ -6,12 +6,8 @@ VENV_DIR="$INSTALL_DIR/venv"
 MAIN_PY_SOURCE="main.py" # Assumes main.py is in the same directory as the install.sh script
 USR_BIN_SCRIPT="/usr/bin/pycloud-daemon"
 SYSTEMD_SERVICE_FILE="/etc/systemd/system/pycloud-daemon.service"
-LOG_FILE="$INSTALL_DIR/daemon_log.txt" # Ensure this path is consistent with main.py
 
 # --- Functions ---
-log_message() {
-    echo "$(date +'%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
-}
 
 check_root() {
     if [[ $EUID -ne 0 ]]; then
@@ -52,8 +48,6 @@ Restart=on-failure
 User=root
 Group=root
 WorkingDirectory=$INSTALL_DIR
-#StandardOutput=append:$LOG_FILE
-#StandardError=append:$LOG_FILE
 
 [Install]
 WantedBy=multi-user.target
@@ -104,4 +98,3 @@ systemctl start pycloud-daemon.service || { log_message "Failed to start service
 log_message "PyCloudMonitorDaemon installation complete!"
 log_message "Service status:"
 systemctl status pycloud-daemon.service
-log_message "You can view logs in: $LOG_FILE"
