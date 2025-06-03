@@ -3,7 +3,7 @@
 # --- Configuration ---
 APP_NAME="PyCloudDaemon"
 # Use the same VENV path as the installer script
-VENV_DIR="/root/PyCloudDaemon"
+VENV_DIR="/root/PyCloudDaemon/venv"
 VENV_PYTHON="${VENV_DIR}/bin/python"
 
 cd $VENV_DIR
