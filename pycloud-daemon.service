@@ -1,0 +1,13 @@
+[Unit]
+Description=PyCloud Daemon Service
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/pycloud-daemon #Default Directory
+User=root #Need to create a PyCloud user later for security
+Group=root #Need to create a PyCloud user later for security
+WorkingDirectory=/home/changeme/.local/share/PyCloudDaemon/ #Change changeme to your username
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
