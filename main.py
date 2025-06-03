@@ -19,13 +19,17 @@ UPTIME_TRACKING_FILE = "uptime_data.json" # To store boot times for percentage c
 
 # --- Helper Functions ---
 
-def log_message(message):
-    """Logs a message to the log file and prints to console."""
+def log_message(message, is_error=False):
+    """
+    Logs a message to the log file (only if is_error is True) and prints to console.
+    """
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     full_message = f"[{timestamp}] {message}"
-    print(full_message)
-    with open(LOG_FILE, "a") as f:
-        f.write(full_message + "\n")
+    print(full_message) # Always print to console
+
+    if is_error:
+        with open(LOG_FILE, "a") as f:
+            f.write(full_message + "\n")
 
 def get_uptime_seconds():
     """Gets system uptime in seconds."""
@@ -38,7 +42,7 @@ def load_boot_times():
             with open(UPTIME_TRACKING_FILE, "r") as f:
                 return json.load(f)
         except json.JSONDecodeError:
-            log_message(f"Error decoding JSON from {UPTIME_TRACKING_FILE}. Returning empty list.")
+            log_message(f"Error decoding JSON from {UPTIME_TRACKING_FILE}. Returning empty list.", is_error=True)
             return []
     return []
 
@@ -53,14 +57,13 @@ def save_boot_time():
         with open(UPTIME_TRACKING_FILE, "w") as f:
             json.dump(boot_times, f)
     except IOError as e:
-        log_message(f"Error saving boot time to {UPTIME_TRACKING_FILE}: {e}")
+        log_message(f"Error saving boot time to {UPTIME_TRACKING_FILE}: {e}", is_error=True)
 
 
 def get_uptime_percentage_last_7_days():
     """Calculates uptime percentage for the last 7 days."""
     now = time.time()
     seven_days_ago = now - timedelta(days=7).total_seconds()
-    # boot_times = load_boot_times() # This was not used effectively in the original logic for 7 days
     current_boot_time = psutil.boot_time()
 
     total_time_in_period = timedelta(days=7).total_seconds()
@@ -127,8 +130,10 @@ def get_system_info_data():
             except FileNotFoundError:
                 info["distro_name"] = "Linux (Unknown Distro - /etc/os-release not found)"
             except Exception as e:
+                log_message(f"Linux (Error fetching distro: {e})", is_error=True)
                 info["distro_name"] = f"Linux (Error fetching distro: {e})"
         except Exception as e:
+             log_message(f"Linux (Distro lookup error: {e})", is_error=True)
              info["distro_name"] = f"Linux (Distro lookup error: {e})"
     return info
 
@@ -138,41 +143,38 @@ def send_response(conn, data):
         response_json = json.dumps(data)
         conn.sendall(response_json.encode('utf-8'))
     except Exception as e:
-        log_message(f"Error sending response: {e}")
+        log_message(f"Error sending response: {e}", is_error=True)
 
 # --- Remotely Callable Functions ---
 def handle_get_system_info(conn):
     """Handles the 'get_system_info' action."""
-    log_message("Action: get_system_info requested.")
+    # Only log errors, so no log_message for success
     system_data = get_system_info_data()
     send_response(conn, {"status": "success", "data": system_data})
-    log_message("Sent system_info data.")
 
 def handle_reboot_system(conn, addr):
     """Handles the 'reboot' action."""
-    log_message(f"Action: reboot_system requested by {addr}.")
     # SECURITY: Ensure the user running this script has sudo NOPASSWD for 'reboot'
     # or run this script as root (less recommended).
     command = ["sudo", "reboot", "now"]
     try:
-        log_message(f"Executing command: {' '.join(command)}")
         send_response(conn, {"status": "success", "message": "Reboot command issued. Server will shut down."})
         # Give a moment for the message to be sent before rebooting
         time.sleep(1)
         subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         # The script will likely terminate here if reboot is successful
     except FileNotFoundError:
-        log_message(f"Error: 'sudo' command not found. Cannot reboot.")
+        log_message(f"Error: 'sudo' command not found. Cannot reboot.", is_error=True)
         send_response(conn, {"status": "error", "message": "Reboot command 'sudo' not found on server."})
     except subprocess.CalledProcessError as e:
-        log_message(f"Error during reboot: {e.stderr.decode() if e.stderr else e}")
+        log_message(f"Error during reboot: {e.stderr.decode() if e.stderr else e}", is_error=True)
         # May not be able to send this if reboot has already started partially
         try:
             send_response(conn, {"status": "error", "message": f"Reboot failed: {e.stderr.decode() if e.stderr else e}"})
         except:
             pass # Connection might be dead
     except Exception as e:
-        log_message(f"An unexpected error occurred during reboot: {e}")
+        log_message(f"An unexpected error occurred during reboot: {e}", is_error=True)
         try:
             send_response(conn, {"status": "error", "message": f"An unexpected error occurred during reboot: {e}"})
         except:
@@ -181,12 +183,10 @@ def handle_reboot_system(conn, addr):
 
 def handle_update_system(conn, addr):
     """Handles the 'update' action using UnifiedUpdater."""
-    log_message(f"Action: update_system requested by {addr}.")
     # Ensure UnifiedUpdater is in PATH or use its full path.
     # Example: command = ["/path/to/your/UnifiedUpdater"]
     command = ["UnifiedUpdater"] # Assuming it's in PATH
     try:
-        log_message(f"Executing command: {' '.join(command)}")
         # Using a timeout for the updater process can be a good idea
         process = subprocess.run(command, capture_output=True, text=True, check=False, timeout=3600) # 1 hour timeout
 
@@ -194,65 +194,69 @@ def handle_update_system(conn, addr):
         stderr = process.stderr.strip()
 
         if process.returncode == 0:
-            log_message(f"UnifiedUpdater completed successfully. Output:\n{stdout}")
+            # Success, no log_message to file, but still print to console
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] UnifiedUpdater completed successfully.")
             send_response(conn, {"status": "success", "message": "Update process completed.", "output": stdout, "error": stderr if stderr else ""})
         else:
-            log_message(f"UnifiedUpdater failed. Return code: {process.returncode}\nStdout:\n{stdout}\nStderr:\n{stderr}")
+            log_message(f"UnifiedUpdater failed. Return code: {process.returncode}\nStdout:\n{stdout}\nStderr:\n{stderr}", is_error=True)
             send_response(conn, {"status": "error", "message": "Update process failed.", "output": stdout, "error": stderr, "return_code": process.returncode})
 
     except FileNotFoundError:
-        log_message(f"Error: '{command[0]}' command not found. Cannot update.")
+        log_message(f"Error: '{command[0]}' command not found. Cannot update.", is_error=True)
         send_response(conn, {"status": "error", "message": f"Update command '{command[0]}' not found on server."})
     except subprocess.TimeoutExpired:
-        log_message(f"Error: UnifiedUpdater command timed out.")
+        log_message(f"Error: UnifiedUpdater command timed out.", is_error=True)
         send_response(conn, {"status": "error", "message": "Update process timed out."})
     except subprocess.CalledProcessError as e: # Should be caught by check=False and returncode check, but as a fallback
-        log_message(f"Error during update (CalledProcessError): {e.stderr if e.stderr else e}")
+        log_message(f"Error during update (CalledProcessError): {e.stderr if e.stderr else e}", is_error=True)
         send_response(conn, {"status": "error", "message": f"Update failed: {e.stderr if e.stderr else e}"})
     except Exception as e:
-        log_message(f"An unexpected error occurred during update: {e}")
+        log_message(f"An unexpected error occurred during update: {e}", is_error=True)
         send_response(conn, {"status": "error", "message": f"An unexpected error occurred during update: {e}"})
 
 
 # --- Main Client Handler ---
 def handle_client(conn, addr):
     """Handles a single client connection."""
-    log_message(f"Connected by {addr}")
+    # Success, so no log_message to file, but still print to console
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Connected by {addr}")
     try:
         # 1. Authentication
         conn.sendall(b"Password: ")
         password_attempt_bytes = conn.recv(1024)
         if not password_attempt_bytes:
-            log_message(f"Client {addr} disconnected before sending password.")
+            log_message(f"Client {addr} disconnected before sending password.", is_error=True)
             return
         password_attempt = password_attempt_bytes.strip().decode('utf-8')
 
         if hashlib.sha256(password_attempt.encode('utf-8')).hexdigest() != PASSWORD_HASH:
             conn.sendall(b"Authentication failed.\n")
-            log_message(f"Authentication failed for {addr}")
+            log_message(f"Authentication failed for {addr}", is_error=True)
             return
 
         conn.sendall(b"Authentication successful. Send JSON command.\n")
-        log_message(f"Authentication successful for {addr}. Waiting for command.")
+        # Success, so no log_message to file, but still print to console
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Authentication successful for {addr}. Waiting for command.")
 
         # 2. Receive Action Command
         request_bytes = conn.recv(2048) # Increased buffer size for JSON
         if not request_bytes:
-            log_message(f"Client {addr} disconnected before sending command.")
+            log_message(f"Client {addr} disconnected before sending command.", is_error=True)
             return
 
         request_str = request_bytes.decode('utf-8').strip()
-        log_message(f"Received command string from {addr}: {request_str}")
+        # Success, so no log_message to file, but still print to console
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Received command string from {addr}: {request_str}")
 
         try:
             request_data = json.loads(request_str)
             action = request_data.get("action")
         except json.JSONDecodeError:
-            log_message(f"Invalid JSON received from {addr}: {request_str}")
+            log_message(f"Invalid JSON received from {addr}: {request_str}", is_error=True)
             send_response(conn, {"status": "error", "message": "Invalid JSON command."})
             return
         except Exception as e: # Catch any other error during parsing
-            log_message(f"Error processing command from {addr}: {e}")
+            log_message(f"Error processing command from {addr}: {e}", is_error=True)
             send_response(conn, {"status": "error", "message": f"Could not parse command: {e}"})
             return
 
@@ -265,25 +269,26 @@ def handle_client(conn, addr):
         elif action == "update":
             handle_update_system(conn, addr)
         else:
-            log_message(f"Unknown action '{action}' requested by {addr}")
+            log_message(f"Unknown action '{action}' requested by {addr}", is_error=True)
             send_response(conn, {"status": "error", "message": f"Unknown action: {action}"})
 
     except socket.timeout:
-        log_message(f"Connection timed out for {addr}")
+        log_message(f"Connection timed out for {addr}", is_error=True)
     except BrokenPipeError:
-        log_message(f"Client {addr} disconnected abruptly (BrokenPipeError).")
+        log_message(f"Client {addr} disconnected abruptly (BrokenPipeError).", is_error=True)
     except ConnectionResetError:
-        log_message(f"Connection reset by {addr}.")
+        log_message(f"Connection reset by {addr}.", is_error=True)
     except Exception as e:
-        log_message(f"Error handling client {addr}: {type(e).__name__} - {e}")
+        log_message(f"Error handling client {addr}: {type(e).__name__} - {e}", is_error=True)
         # Attempt to send an error to the client if the connection is still somewhat alive
         try:
             send_response(conn, {"status": "error", "message": "An unexpected server error occurred."})
         except Exception as send_e:
-            log_message(f"Could not send final error to client {addr}: {send_e}")
+            log_message(f"Could not send final error to client {addr}: {send_e}", is_error=True)
     finally:
         conn.close()
-        log_message(f"Connection closed with {addr}")
+        # Success, so no log_message to file, but still print to console
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Connection closed with {addr}")
 
 def daemon_main():
     """Main daemon loop."""
@@ -294,7 +299,8 @@ def daemon_main():
     try:
         s.bind((HOST, PORT))
         s.listen()
-        log_message(f"Daemon listening on {HOST}:{PORT}")
+        # Success, so no log_message to file, but still print to console
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Daemon listening on {HOST}:{PORT}")
         while True:
             try:
                 conn, addr = s.accept()
@@ -303,14 +309,14 @@ def daemon_main():
                 client_thread.daemon = True
                 client_thread.start()
             except Exception as e: # Catch errors in the accept loop itself
-                log_message(f"Error accepting connection: {e}")
+                log_message(f"Error accepting connection: {e}", is_error=True)
                 time.sleep(1) # Avoid fast spinning on persistent accept errors
     except OSError as e:
-        log_message(f"OSError: {e}. Could not bind to {HOST}:{PORT}. Port might be in use or permission denied.")
+        log_message(f"OSError: {e}. Could not bind to {HOST}:{PORT}. Port might be in use or permission denied.", is_error=True)
     except Exception as e:
-        log_message(f"Critical daemon error in main loop: {e}")
+        log_message(f"Critical daemon error in main loop: {e}", is_error=True)
     finally:
-        log_message("Daemon shutting down.")
+        log_message("Daemon shutting down.", is_error=True) # Log daemon shutdown to ensure it's recorded
         s.close()
 
 # --- Daemonization (Basic) ---
@@ -318,7 +324,7 @@ def become_daemon():
     # This basic daemonization is often not robust enough for production.
     # Consider using systemd, supervisor, or a library like 'python-daemon'.
     if platform.system() == "Windows":
-        log_message("Daemonization (fork) is not supported on Windows. Running in foreground.")
+        log_message("Daemonization (fork) is not supported on Windows. Running in foreground.", is_error=True)
         daemon_main()
         return
 
@@ -328,7 +334,7 @@ def become_daemon():
             # Exit first parent
             os._exit(0)
     except OSError as e:
-        log_message(f"fork #1 failed: {e.errno} ({e.strerror})")
+        log_message(f"fork #1 failed: {e.errno} ({e.strerror})", is_error=True)
         os._exit(1)
 
     os.chdir("/")
@@ -341,10 +347,11 @@ def become_daemon():
             # Exit second parent
             os._exit(0)
     except OSError as e:
-        log_message(f"fork #2 failed: {e.errno} ({e.strerror})")
+        log_message(f"fork #2 failed: {e.errno} ({e.strerror})", is_error=True)
         os._exit(1)
 
-    log_message("Daemon process started.")
+    # Success, so no log_message to file, but still print to console
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Daemon process started.")
 
     # Redirect standard file descriptors (optional but good practice for daemons)
     # sys.stdout.flush()
@@ -361,7 +368,8 @@ def become_daemon():
 
 if __name__ == "__main__":
     # For testing, you might want to run it directly without full daemonization:
-    log_message("Starting daemon (foreground mode for this example)...")
+    # Success, so no log_message to file, but still print to console
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Starting daemon (foreground mode for this example)...")
     # To run as a daemon (on Linux/macOS):
     # become_daemon()
     daemon_main() # For direct execution
